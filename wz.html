@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>课程表生成器</title>
+    <style>
+        /* 设置 PDF 的位置到右上角 */
+        .pdf-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 800px;
+            height: 1200px;
+            border: none;
+        }
+
+        /* 时间表样式 */
+        .schedule-table {
+            width: 65%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .schedule-table th, .schedule-table td {
+            border: 1px solid #ccc;
+            text-align: center;
+            padding: 5px;
+            width: 12.5%;
+        }
+        .schedule-table th {
+            background-color: #f0f0f0;
+        }
+        .occupied {
+            background-color: #00aaff;
+            color: #000;
+            text-align: center;
+            vertical-align: middle;
+            position: relative;
+        }
+        .action-buttons {
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h2>输入课程信息</h2>
+    <form id="courseForm">
+        课程名称: <input type="text" id="courseName"><br>
+        开始时间: <input type="time" id="startTime"><br>
+        结束时间: <input type="time" id="endTime"><br>
+        课程颜色: <input type="color" id="courseColor" value="#00aaff"><br>
+        每周上课天数:
+        <label><input type="checkbox" value="Monday"> 周一</label>
+        <label><input type="checkbox" value="Tuesday"> 周二</label>
+        <label><input type="checkbox" value="Wednesday"> 周三</label>
+        <label><input type="checkbox" value="Thursday"> 周四</label>
+        <label><input type="checkbox" value="Friday"> 周五</label>
+        <label><input type="checkbox" value="Saturday"> 周六</label>
+        <label><input type="checkbox" value="Sunday"> 周日</label>
+        <br>
+        上课地点: <input type="text" id="location"><br>
+        备注: <input type="text" id="remarks"><br>
+        <button type="button" onclick="submitForm()">提交</button>
+    </form>
+
+    <h2>生成的课表</h2>
+    <table class="schedule-table" id="schedule">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Monday</th>
+                <th>Tuesday</th>
+                <th>Wednesday</th>
+                <th>Thursday</th>
+                <th>Friday</th>
+                <th>Saturday</th>
+                <th>Sunday</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- 动态生成时间段行，每小时分为两个30分钟 -->
+            <script>
+                function createScheduleRows() {
+                    const scheduleBody = document.querySelector('#schedule tbody');
+                    for (let hour = 6; hour < 24; hour++) {
+                        const hourString = hour.toString().padStart(2, '0');
+                        // 每小时的 0 分钟
+                        let row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${hourString}:00</td>
+                            <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                        `;
+                        scheduleBody.appendChild(row);
+                        // 每小时的 30 分钟
+                        row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${hourString}:30</td>
+                            <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                        `;
+                        scheduleBody.appendChild(row);
+                    }
+                }
+                createScheduleRows();
+
+                document.addEventListener('DOMContentLoaded', loadCourses);
+
+                function loadCourses() {
+                    const courses = JSON.parse(localStorage.getItem('courses')) || [];
+                    courses.forEach(course => addCourseToSchedule(course));
+                }
+
+                function saveCourses(courses) {
+                    localStorage.setItem('courses', JSON.stringify(courses));
+                }
+
+                function submitForm() {
+                    const courseName = document.getElementById('courseName').value;
+                    const startTime = document.getElementById('startTime').value;
+                    const endTime = document.getElementById('endTime').value;
+                    const courseColor = document.getElementById('courseColor').value;
+                    const days = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+                    const location = document.getElementById('location').value;
+                    const remarks = document.getElementById('remarks').value;
+
+                    if (!courseName || !startTime || !endTime || days.length === 0 || !location) {
+                        alert("请填写所有字段！");
+                        return;
+                    }
+
+                    const course = { courseName, startTime, endTime, courseColor, days, location, remarks };
+                    addCourseToSchedule(course);
+
+                    // 保存数据到 localStorage
+                    const courses = JSON.parse(localStorage.getItem('courses')) || [];
+                    courses.push(course);
+                    saveCourses(courses);
+
+                    // 清空表单
+                    document.getElementById('courseForm').reset();
+                }
+
+                function addCourseToSchedule(course) {
+                    const start = new Date(`1970-01-01T${course.startTime}:00`);
+                    const end = new Date(`1970-01-01T${course.endTime}:00`);
+                    const duration = (end - start) / (1000 * 60 * 30); // 计算课程跨越的30分钟段数
+
+                    course.days.forEach(day => {
+                        let columnIndex = {
+                            "Monday": 1,
+                            "Tuesday": 2,
+                            "Wednesday": 3,
+                            "Thursday": 4,
+                            "Friday": 5,
+                            "Saturday": 6,
+                            "Sunday": 7
+                        }[day];
+
+                        let rowIndex = 0;
+                        document.querySelectorAll('#schedule tbody tr').forEach((row, index) => {
+                            const cellTime = row.cells[0].textContent;
+                            const rowTime = new Date(`1970-01-01T${cellTime}:00`);
+                            if (rowTime.getTime() === start.getTime()) {
+                                rowIndex = index;
+                            }
+                        });
+
+                        const cell = document.querySelector(`#schedule tbody`).rows[rowIndex].cells[columnIndex];
+                        cell.className = 'occupied';
+                        cell.style.backgroundColor = course.courseColor;
+
+                        // 显示课程名称和地点，如果有备注则显示，否则不显示
+                        let content = `${course.courseName}<br>${course.location}`;
+                        if (course.remarks) {
+                            content += `<br>${course.remarks}`;
+                        }
+
+                        cell.innerHTML = `
+                            ${content}
+                            <div class="action-buttons">
+                                <button onclick="editCourse('${course.courseName}')">修改</button>
+                                <button onclick="deleteCourse('${course.courseName}')">删除</button>
+                            </div>
+                        `;
+                        cell.rowSpan = duration; // 合并单元格
+
+                        // 清空多余的单元格
+                        for (let i = 1; i < duration; i++) {
+                            const rowToClear = document.querySelector(`#schedule tbody`).rows[rowIndex + i];
+                            rowToClear.cells[columnIndex].remove();
+                        }
+                    });
+                }
+
+                function deleteCourse(courseName) {
+                    // 从 localStorage 中删除该课程
+                    let courses = JSON.parse(localStorage.getItem('courses')) || [];
+                    courses = courses.filter(course => course.courseName !== courseName);
+                    saveCourses(courses);
+
+                    // 重新渲染时间表
+                    document.querySelector('#schedule tbody').innerHTML = '';
+                    createScheduleRows();
+                    courses.forEach(course => addCourseToSchedule(course));
+                }
+
+                function editCourse(courseName) {
+                    const courses = JSON.parse(localStorage.getItem('courses')) || [];
+                    const course = courses.find(c => c.courseName === courseName);
+
+                    if (course) {
+                        document.getElementById('courseName').value = course.courseName;
+                        document.getElementById('startTime').value = course.startTime;
+                        document.getElementById('endTime').value = course.endTime;
+                        document.getElementById('courseColor').value = course.courseColor;
+                        document.getElementById('location').value = course.location;
+                        document.getElementById('remarks').value = course.remarks;
+
+                        document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                            checkbox.checked = course.days.includes(checkbox.value);
+                        });
+
+                        // 删除当前课程数据
+                        deleteCourse(courseName);
+                    }
+                }
+            </script>
+        </tbody>
+    </table>
+
+    <!-- 嵌入 PDF 文件 -->
+    <iframe class="pdf-container" src="https://harry458.github.io/docs/uc_merced_campuswayfindingmap_2023.pdf#zoom=28">
+        你的浏览器不支持嵌入 PDF 文件。你可以查看 PDF 文件 <a href="https://harry458.github.io/docs/uc_merced_campuswayfindingmap_2023.pdf">这里</a>.
+    </iframe>
+</body>
+</html>
